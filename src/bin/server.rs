@@ -5,6 +5,8 @@ use shoes::{server, cli::Cli};
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
+  tracing_subscriber::fmt::init();
+
   let default_port = 7474;
   let args = Cli::parse();
   let port = args.port.unwrap_or(default_port);
@@ -14,3 +16,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
   server::run(listener).await;
   Ok(())
 }
+
+// fn setup_logging() -> Result<(), Box<dyn std::error::Error>> {
+  
+// }
