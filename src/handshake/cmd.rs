@@ -16,4 +16,10 @@ impl TryFrom<u8> for SocksCmd {
   }
 }
 
-
+impl From<SocksCmd> for u8 {
+  fn from(item: SocksCmd) -> Self {
+    match item {
+      SocksCmd::Connect => 1
+    }
+  }
+}

@@ -68,7 +68,7 @@ impl ConnHandler {
 
     let req = loop {
       n_read += self.socket.read(&mut buf[n_read..]).await?;
-      let msg = format!("Accepted: {:?}, bytes read: {:?}", String::from_utf8_lossy(&buf[0..n_read]), n_read);
+      let msg = format!("Accepted: {:?}, num of bytes read: {:?}", String::from_utf8_lossy(&buf[0..n_read]), n_read);
       debug!(msg);
 
       match &mut self.conn_state {
@@ -93,8 +93,8 @@ impl ConnHandler {
               reply.push(0);
               reply.push(0);
               reply.push(hs.atyp.into());
-              reply.append(&mut hs.addr.octets().to_vec());
-              reply.append(&mut hs.port.to_be_bytes().to_vec());
+              reply.append(&mut hs.addr_to_bytes());
+              reply.append(&mut hs.port_to_bytes());
               self.socket.write(&reply).await?;
               self.conn_state = ConnState::ConnEstablished(target_socket)
             }

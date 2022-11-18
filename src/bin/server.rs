@@ -18,7 +18,3 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
   server::run(listener).await;
   Ok(())
 }
-
-// fn setup_logging() -> Result<(), Box<dyn std::error::Error>> {
-  
-// }

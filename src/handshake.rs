@@ -21,12 +21,31 @@ pub struct SocksHandshake {
   pub cmd: SocksCmd,
   pub addr: Ipv4Addr,
   pub port: u16,
-  pub atyp: AddrType,
+  pub atyp: AddrType, // do we need this one if the information can be derived from addr?
 }
 
 impl SocksHandshake {
   pub fn to_addr(&self) -> String {
     format!("{}:{}", self.addr.to_string(), self.port)
+  }
+
+  pub fn to_request(&self) -> Vec<u8> {
+    let mut req: Vec<u8> = vec![];
+    req.push(self.version.into());
+    req.push(self.cmd.into());
+    req.push(0); // reserved
+    req.push(self.atyp.into());
+    req.append(&mut self.addr_to_bytes());
+    req.append(&mut self.port_to_bytes());
+    req
+  }
+
+  pub fn addr_to_bytes(&self) -> Vec<u8> {
+    self.addr.octets().to_vec()
+  }
+
+  pub fn port_to_bytes(&self) -> Vec<u8> {
+    self.port.to_be_bytes().to_vec()
   }
 }
 
@@ -154,7 +173,7 @@ impl HandshakeStateBuilder {
     }
 
     // make sure we read everything from buffer, drain?
-    // take not of selected method?
+    // take note of selected method?
     self.reply = vec![version.into(), self.select_method().into()];
     self.state = HandshakeState::Wait(version, self.methods.clone());
 
