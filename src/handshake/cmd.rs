@@ -1,6 +1,6 @@
 use crate::handshake::error::HandshakeError;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum SocksCmd {
   Connect,
 }

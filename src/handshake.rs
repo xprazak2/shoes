@@ -15,11 +15,13 @@ use crate::handshake::version::SocksVersion;
 use crate::handshake::cmd::SocksCmd;
 
 
+#[derive(Clone, Debug)]
 pub struct SocksHandshake {
   pub version: SocksVersion,
   pub cmd: SocksCmd,
   pub addr: Ipv4Addr,
   pub port: u16,
+  pub atyp: AddrType,
 }
 
 impl SocksHandshake {
@@ -28,23 +30,25 @@ impl SocksHandshake {
   }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Clone)]
 pub enum HandshakeState {
   Init,
-  Wait,
-  Finished,
+  Wait(SocksVersion, Vec<SocksMethod>),
+  Finished(SocksHandshake),
 }
 
-impl HandshakeState {
-  fn next(&self) -> Self {
-    use HandshakeState::*;
-    match self {
-      Init => Wait,
-      Wait => Finished,
-      Finished => Finished,
-    }
-  }
-}
+// impl HandshakeState {
+//   fn next(&self) -> Self {
+//     use HandshakeState::*;
+//     match self {
+//       Init => Wait,
+//       Wait => Finished,
+//       Finished => Finished,
+//     }
+//   }
+// }
+
+#[derive(Clone)]
 
 pub struct HandshakeStateBuilder {
   state: HandshakeState,
@@ -84,8 +88,8 @@ impl HandshakeStateBuilder {
 
     match self.state {
       HandshakeState::Init => self.advance_from_init(buf),
-      HandshakeState::Wait => self.advance_from_wait(buf),
-      HandshakeState::Finished => Ok(()),
+      HandshakeState::Wait(_, _) => self.advance_from_wait(buf),
+      HandshakeState::Finished(_) => Ok(()),
     }
   }
 
@@ -110,7 +114,7 @@ impl HandshakeStateBuilder {
       return Err(HandshakeError::Incomplete);
     }
 
-    let _atyp: AddrType = incoming.get_u8().try_into()?;
+    let atyp: AddrType = incoming.get_u8().try_into()?;
 
     if incoming.remaining() < 4 {
       return Err(HandshakeError::Incomplete);
@@ -123,8 +127,8 @@ impl HandshakeStateBuilder {
     }
 
     let port = incoming.get_u16();
-    self.handshake = Some(SocksHandshake{ version, cmd, addr, port });
-    self.state = self.state.next();
+    self.handshake = Some(SocksHandshake{ version, cmd, addr, port, atyp });
+    self.state = HandshakeState::Finished(SocksHandshake{ version, cmd, addr, port, atyp });
 
     Ok(())
   }
@@ -152,7 +156,7 @@ impl HandshakeStateBuilder {
     // make sure we read everything from buffer, drain?
     // take not of selected method?
     self.reply = vec![version.into(), self.select_method().into()];
-    self.state = self.state.next();
+    self.state = HandshakeState::Wait(version, self.methods.clone());
 
     Ok(())
   }

@@ -1,6 +1,6 @@
 use crate::handshake::error::HandshakeError;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum AddrType {
   Ipv4,
 }
@@ -16,4 +16,10 @@ impl TryFrom<u8> for AddrType {
   }
 }
 
-
+impl From<AddrType> for u8 {
+  fn from(method: AddrType) -> Self {
+    match method {
+      AddrType::Ipv4 => 1,
+    }
+  }
+}
