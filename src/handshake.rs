@@ -14,43 +14,50 @@ use crate::handshake::method::SocksMethod;
 use crate::handshake::version::SocksVersion;
 use crate::handshake::cmd::SocksCmd;
 
-struct SocksHandshake {
-  version: SocksVersion,
-  cmd: SocksCmd,
-  addr: Ipv4Addr,
-  port: u16,
+
+pub struct SocksHandshake {
+  pub version: SocksVersion,
+  pub cmd: SocksCmd,
+  pub addr: Ipv4Addr,
+  pub port: u16,
 }
 
-#[derive(PartialEq)]
-pub enum ConnState {
+impl SocksHandshake {
+  pub fn to_addr(&self) -> String {
+    format!("{}:{}", self.addr.to_string(), self.port)
+  }
+}
+
+#[derive(Copy, Clone, PartialEq)]
+pub enum HandshakeState {
   Init,
-  HsWait,
-  HsFinished,
+  Wait,
+  Finished,
 }
 
-impl ConnState {
+impl HandshakeState {
   fn next(&self) -> Self {
-    use ConnState::*;
+    use HandshakeState::*;
     match self {
-      Init => HsWait,
-      HsWait => HsFinished,
-      HsFinished => HsFinished,
+      Init => Wait,
+      Wait => Finished,
+      Finished => Finished,
     }
   }
 }
 
-pub struct ConnStateBuilder {
-  state: ConnState,
+pub struct HandshakeStateBuilder {
+  state: HandshakeState,
   version: Option<SocksVersion>,
   methods: Vec<SocksMethod>,
   reply: Vec<u8>,
   handshake: Option<SocksHandshake>,
 }
 
-impl ConnStateBuilder {
+impl HandshakeStateBuilder {
   pub fn new() -> Self {
     Self {
-      state: ConnState::Init,
+      state: HandshakeState::Init,
       version: None,
       methods: vec![],
       reply: vec![],
@@ -62,15 +69,23 @@ impl ConnStateBuilder {
     &self.reply
   }
 
+  pub fn state(&self) -> HandshakeState {
+    self.state.clone()
+  }
+
+  pub fn handshake(&self) -> &Option<SocksHandshake> {
+    &self.handshake
+  }
+
   pub fn advance(&mut self, buf: &[u8]) -> Result<(), HandshakeError> {
     if buf.is_empty() {
       return Err(HandshakeError::Incomplete)
     }
 
     match self.state {
-      ConnState::Init => self.advance_from_init(buf),
-      ConnState::HsWait => self.advance_from_wait(buf),
-      ConnState::HsFinished => Ok(()),
+      HandshakeState::Init => self.advance_from_init(buf),
+      HandshakeState::Wait => self.advance_from_wait(buf),
+      HandshakeState::Finished => Ok(()),
     }
   }
 
