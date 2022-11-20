@@ -7,6 +7,8 @@ pub mod error;
 pub mod version;
 pub mod method;
 pub mod cmd;
+pub mod reply_field;
+pub mod reply;
 
 use crate::handshake::addr_type::AddrType;
 use crate::handshake::error::HandshakeError;
@@ -14,6 +16,21 @@ use crate::handshake::method::SocksMethod;
 use crate::handshake::version::SocksVersion;
 use crate::handshake::cmd::SocksCmd;
 
+pub trait WithIpv4Addr {
+  fn addr(&self) -> Ipv4Addr;
+
+  fn addr_to_bytes(&self) -> Vec<u8> {
+    self.addr().octets().to_vec()
+  }
+}
+
+pub trait WithPort {
+  fn port(&self) -> u16;
+
+  fn port_to_bytes(&self) -> Vec<u8> {
+    self.port().to_be_bytes().to_vec()
+  }
+}
 
 #[derive(Clone, Debug)]
 pub struct SocksHandshake {
@@ -40,40 +57,38 @@ impl SocksHandshake {
     req
   }
 
-  pub fn addr_to_bytes(&self) -> Vec<u8> {
-    self.addr.octets().to_vec()
-  }
+  // pub fn addr_to_bytes(&self) -> Vec<u8> {
+  //   self.addr.octets().to_vec()
+  // }
 
-  pub fn port_to_bytes(&self) -> Vec<u8> {
-    self.port.to_be_bytes().to_vec()
+  // pub fn port_to_bytes(&self) -> Vec<u8> {
+  //   self.port.to_be_bytes().to_vec()
+  // }
+}
+
+impl WithIpv4Addr for SocksHandshake {
+  fn addr(&self) -> Ipv4Addr {
+    self.addr
+  }
+}
+impl WithPort for SocksHandshake {
+  fn port(&self) -> u16 {
+    self.port
   }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum HandshakeState {
   Init,
   Wait(SocksVersion, Vec<SocksMethod>),
   Finished(SocksHandshake),
 }
 
-// impl HandshakeState {
-//   fn next(&self) -> Self {
-//     use HandshakeState::*;
-//     match self {
-//       Init => Wait,
-//       Wait => Finished,
-//       Finished => Finished,
-//     }
-//   }
-// }
-
 #[derive(Clone)]
-
 pub struct HandshakeStateBuilder {
   state: HandshakeState,
   version: Option<SocksVersion>,
   methods: Vec<SocksMethod>,
-  reply: Vec<u8>,
   handshake: Option<SocksHandshake>,
 }
 
@@ -83,13 +98,8 @@ impl HandshakeStateBuilder {
       state: HandshakeState::Init,
       version: None,
       methods: vec![],
-      reply: vec![],
       handshake: None,
     }
-  }
-
-  pub fn reply(&self) -> &Vec<u8> {
-    &self.reply
   }
 
   pub fn state(&self) -> HandshakeState {
@@ -100,7 +110,7 @@ impl HandshakeStateBuilder {
     &self.handshake
   }
 
-  pub fn advance(&mut self, buf: &[u8]) -> Result<(), HandshakeError> {
+  pub fn advance(&mut self, buf: &[u8]) -> Result<Vec<u8>, HandshakeError> {
     if buf.is_empty() {
       return Err(HandshakeError::Incomplete)
     }
@@ -108,11 +118,11 @@ impl HandshakeStateBuilder {
     match self.state {
       HandshakeState::Init => self.advance_from_init(buf),
       HandshakeState::Wait(_, _) => self.advance_from_wait(buf),
-      HandshakeState::Finished(_) => Ok(()),
+      HandshakeState::Finished(_) => Ok(vec![]),
     }
   }
 
-  fn advance_from_wait(&mut self, buf: &[u8]) -> Result<(), HandshakeError> {
+  fn advance_from_wait(&mut self, buf: &[u8]) -> Result<Vec<u8>, HandshakeError> {
     let mut incoming = Cursor::new(buf);
     let version: SocksVersion = incoming.get_u8().try_into()?;
 
@@ -149,10 +159,10 @@ impl HandshakeStateBuilder {
     self.handshake = Some(SocksHandshake{ version, cmd, addr, port, atyp });
     self.state = HandshakeState::Finished(SocksHandshake{ version, cmd, addr, port, atyp });
 
-    Ok(())
+    Ok(vec![])
   }
 
-  fn advance_from_init(&mut self, buf: &[u8]) -> Result<(), HandshakeError> {
+  fn advance_from_init(&mut self, buf: &[u8]) -> Result<Vec<u8>, HandshakeError> {
     let mut incoming = Cursor::new(buf);
     let version = incoming.get_u8().try_into()?;
     self.version = Some(version);
@@ -174,10 +184,10 @@ impl HandshakeStateBuilder {
 
     // make sure we read everything from buffer, drain?
     // take note of selected method?
-    self.reply = vec![version.into(), self.select_method().into()];
+    let reply = vec![version.into(), self.select_method().into()];
     self.state = HandshakeState::Wait(version, self.methods.clone());
 
-    Ok(())
+    Ok(reply)
   }
 
   fn select_method(&self) -> SocksMethod {

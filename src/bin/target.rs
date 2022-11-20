@@ -28,13 +28,19 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
       loop {
         tokio::select! {
           incoming = reader.read_line(&mut line) => {
-            let _n_read = match incoming {
+            info!("Receiving: {:?}, incoming: {:?}", line, incoming);
+            let n_read = match incoming {
               Ok(x) => x,
               Err(msg) => {
                 error!("Error reading incoming stream: {}", msg);
                 0
               },
             };
+
+            if n_read == 0 {
+              info!("0B read, closing connection");
+              break;
+            }
             info!("Received: {}", line);
             line.clear();
           }

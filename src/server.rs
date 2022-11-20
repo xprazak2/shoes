@@ -1,11 +1,7 @@
 use tokio::{net::{TcpListener, TcpStream}, io::{AsyncReadExt, AsyncWriteExt}};
 use tracing::{debug, error};
 
-use std::str;
-use std::io::Cursor;
-
-use crate::handshake::{HandshakeStateBuilder, HandshakeState, SocksHandshake};
-
+use crate::handshake::{HandshakeStateBuilder, HandshakeState, SocksHandshake, reply::SocksReply, reply_field::ReplyField};
 
 #[derive(Debug)]
 struct Server {
@@ -38,7 +34,6 @@ impl Server {
 #[derive(Debug)]
 enum ConnState {
   Handshake,
-  VerifyTarget(SocksHandshake),
   ConnEstablished(TcpStream),
 }
 
@@ -55,88 +50,90 @@ impl ConnHandler {
 
   #[tracing::instrument(skip(self))]
   async fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-    println!("processing connection...");
-    let res = self.read_handshake().await?;
+    self.read_handshake().await
+  }
 
-    Ok(())
+  fn clear_buffer(&self, buf: &mut [u8; 1024]) {
+    buf.iter_mut().for_each(|m| *m = 0)
   }
 
   async fn read_handshake(&mut self) -> Result<(), Box<dyn std::error::Error>> {
     let mut buf = [0_u8; 1024];
-    let mut n_read = 0;
     let mut hs_builder = HandshakeStateBuilder::new();
 
-    let req = loop {
-      n_read += self.socket.read(&mut buf[n_read..]).await?;
-      let msg = format!("Accepted: {:?}, num of bytes read: {:?}", String::from_utf8_lossy(&buf[0..n_read]), n_read);
+    loop {
+      let n_read = self.socket.read(&mut buf).await?;
+      if n_read == 0 {
+        break;
+      }
+      let msg = format!("Accepted: {:?}, num of bytes read: {:?} in state: {:?}", &buf[..n_read].to_vec(), n_read, self.conn_state);
       debug!(msg);
 
       match &mut self.conn_state {
         ConnState::Handshake => {
-          // should advancing hs return reply instead of keeping it in state?
-          let res = hs_builder.advance(&buf);
-
-          match res {
-            Ok(_) =>  self.reply(&hs_builder).await?,
+          match hs_builder.advance(&buf) {
+            Ok(reply) => {
+              // swap the lines? make sure buffer is always cleared to make it ready for next incoming data
+              // self.clear_buffer(&mut buf);
+              self.handle_hs_advance(&hs_builder, reply).await?;
+              self.clear_buffer(&mut buf);
+            }
             Err(err) => return Err(Box::new(err)),
           };
         },
-        ConnState::VerifyTarget(hs) => {
-          let addr = hs.to_addr();
-
-          // let verify_res = self.verify_target(&addr);
-          let maybe_target_socket = TcpStream::connect(addr).await;
-          match maybe_target_socket {
-            Ok(target_socket) => {
-              let mut reply: Vec<u8> = vec![];
-              reply.push(hs.version.into());
-              reply.push(0);
-              reply.push(0);
-              reply.push(hs.atyp.into());
-              reply.append(&mut hs.addr_to_bytes());
-              reply.append(&mut hs.port_to_bytes());
-              self.socket.write(&reply).await?;
-              self.conn_state = ConnState::ConnEstablished(target_socket)
-            }
-            Err(err) => {
-              // handle std:io::ErrorKind, reply with error and terminate tcp connection
-              match err.kind() {
-                _ => return Err(Box::new(err)),
-              }
-            }
-          }
-        },
         ConnState::ConnEstablished(target_socket) => {
+          debug!("Writing buffer: {:?}", buf);
           target_socket.write(&mut buf).await?;
         }
       }
     };
-  }
 
-  fn conn_reply(&mut self, hs_builder: &HandshakeStateBuilder) -> Vec<u8> {
-    let mut reply = vec![];
-    // reply.push()
-    reply
-  }
-
-  async fn verify_target(&mut self, addr: &str) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
   }
 
-  async fn reply(&mut self, hs_builder: &HandshakeStateBuilder) -> Result<(), Box<dyn std::error::Error>> {
-    let reply = hs_builder.reply();
-    if !reply.is_empty() {
-      self.socket.write(&reply).await?;
-    }
-
+  async fn handle_hs_advance(&mut self, hs_builder: &HandshakeStateBuilder, reply: Vec<u8>) -> Result<(), Box<dyn std::error::Error>> {
     match hs_builder.state() {
-      HandshakeState::Finished(hs) => self.conn_state = ConnState::VerifyTarget(hs),
-      _ => {}
+      HandshakeState::Wait(_, _) => {
+        debug!("writing hs reply for client: {:?}", reply);
+        self.reply_to_client(reply).await
+      },
+      HandshakeState::Finished(hs) => {
+        self.verify_target_conn(hs).await
+      },
+      HandshakeState::Init => {
+        unreachable!("this should never ever happen")
+      }
     }
-
-    Ok(())
   }
 
+  async fn reply_to_client(&mut self, reply: Vec<u8>) -> Result<(), Box<dyn std::error::Error>> {
+    match self.socket.write(&reply).await {
+      Ok(_n_written) => Ok(()),
+      Err(err) => Err(Box::new(err))
+    }
+  }
+
+  async fn verify_target_conn(&mut self, hs: SocksHandshake) -> Result<(), Box<dyn std::error::Error>> {
+    let addr = hs.to_addr();
+
+    debug!("Connecting to a target host at {:?}", addr);
+    let maybe_target_socket = TcpStream::connect(addr).await;
+    match maybe_target_socket {
+      Ok(target_socket) => {
+        let reply = SocksReply::new(hs.version, ReplyField::Succeeded, hs.atyp, hs.addr, hs.port);
+        debug!("Connection to target successfull, reply for client: {:?}", &reply.to_reply());
+        self.socket.write(&reply.to_reply()).await?;
+        self.conn_state = ConnState::ConnEstablished(target_socket);
+        Ok(())
+      }
+      Err(err) => {
+        // handle std:io::ErrorKind, reply with error to client and terminate tcp connection
+        match err.kind() {
+          _ => return Err(Box::new(err)),
+        }
+      }
+    }
+  }
 }
 
 pub async fn run(listener: TcpListener) {

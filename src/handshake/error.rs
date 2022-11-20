@@ -16,4 +16,14 @@ pub enum HandshakeError {
 
   #[error("unsupported atyp")]
   UnsupportedAddrType,
+
+  #[error("unsupported rep")]
+  UnsupportedRepType,
+}
+
+#[derive(Error, Debug)]
+pub enum SocksReplyParseError {
+  #[error("incomplete input")]
+  Incomplete,
+
 }
