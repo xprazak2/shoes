@@ -1,51 +1,51 @@
 use clap::Parser;
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::TcpListener;
-use tokio::io::{BufReader, AsyncBufReadExt};
 
 use shoes::cli::Cli;
-use tracing::{info, error};
+use tracing::{error, info};
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
-  tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt::init();
 
-  let default_port = 6666;
-  let args = Cli::parse();
-  let port = args.port.unwrap_or(default_port);
+    let default_port = 6666;
+    let args = Cli::parse();
+    let port = args.port.unwrap_or(default_port);
 
-  let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).await?;
-  info!("Running on port {}", port);
+    let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).await?;
+    info!("Running on port {}", port);
 
-  loop {
-    let (mut socket, _addr) = listener.accept().await?;
+    loop {
+        let (mut socket, _addr) = listener.accept().await?;
 
-    tokio::spawn(async move {
-      let (reader, _writer) = socket.split();
+        tokio::spawn(async move {
+            let (reader, _writer) = socket.split();
 
-      let mut reader = BufReader::new(reader);
-      let mut line = String::new();
+            let mut reader = BufReader::new(reader);
+            let mut line = String::new();
 
-      loop {
-        tokio::select! {
-          incoming = reader.read_line(&mut line) => {
-            info!("Receiving: {:?}, incoming: {:?}", line, incoming);
-            let n_read = match incoming {
-              Ok(x) => x,
-              Err(msg) => {
-                error!("Error reading incoming stream: {}", msg);
-                0
-              },
-            };
+            loop {
+                tokio::select! {
+                  incoming = reader.read_line(&mut line) => {
+                    info!("Receiving: {:?}, incoming: {:?}", line, incoming);
+                    let n_read = match incoming {
+                      Ok(x) => x,
+                      Err(msg) => {
+                        error!("Error reading incoming stream: {}", msg);
+                        0
+                      },
+                    };
 
-            if n_read == 0 {
-              info!("0B read, closing connection");
-              break;
+                    if n_read == 0 {
+                      info!("0B read, closing connection");
+                      break;
+                    }
+                    info!("Received: {}", line);
+                    line.clear();
+                  }
+                }
             }
-            info!("Received: {}", line);
-            line.clear();
-          }
-        }
-      }
-    });
-  }
+        });
+    }
 }
