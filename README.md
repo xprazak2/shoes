@@ -1,6 +1,6 @@
 # Shoes
 
-**An (incomplete) implementation of SOCKS proxy, done for education and fun**
+**An (incomplete) implementation of SOCKS5 proxy, done for education and fun**
 
 * To run the SOCKS proxy:
 

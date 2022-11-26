@@ -2,6 +2,7 @@ use std::io::ErrorKind;
 
 use tokio::{net::{TcpListener, TcpStream}, io::{AsyncReadExt, AsyncWriteExt}};
 use tracing::{debug, error};
+use crate::Result;
 
 use crate::handshake::{HandshakeStateBuilder, HandshakeState, SocksHandshake, reply::{SocksReply}, reply_field::ReplyField};
 
@@ -11,7 +12,7 @@ struct Server {
 }
 
 impl Server {
-  async fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+  async fn run(&mut self) -> Result<()> {
     loop {
       let socket = self.accept().await?;
 
@@ -25,7 +26,7 @@ impl Server {
     }
   }
 
-  async fn accept(&mut self) -> Result<TcpStream, Box<dyn std::error::Error>> {
+  async fn accept(&mut self) -> Result<TcpStream> {
     match self.listener.accept().await {
       Ok((socket, _)) => Ok(socket),
       Err(err) => Err(err.into()),
@@ -55,11 +56,11 @@ impl ConnHandler {
   }
 
   #[tracing::instrument(skip(self))]
-  async fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+  async fn run(&mut self) -> Result<()> {
     self.read_handshake().await
   }
 
-  async fn read_handshake(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+  async fn read_handshake(&mut self) -> Result<()> {
     let mut buf = [0_u8; 1024];
     let mut hs_builder = HandshakeStateBuilder::new();
 
@@ -95,7 +96,7 @@ impl ConnHandler {
     Ok(())
   }
 
-  async fn handle_hs_advance(&mut self, hs_builder: &HandshakeStateBuilder, reply: Vec<u8>) -> Result<(), Box<dyn std::error::Error>> {
+  async fn handle_hs_advance(&mut self, hs_builder: &HandshakeStateBuilder, reply: Vec<u8>) -> Result<()> {
     match hs_builder.state() {
       HandshakeState::Wait(_, _) => {
         debug!("writing hs reply for client: {:?}", reply);
@@ -110,21 +111,21 @@ impl ConnHandler {
     }
   }
 
-  async fn reply_to_client(&mut self, reply: Vec<u8>) -> Result<(), Box<dyn std::error::Error>> {
+  async fn reply_to_client(&mut self, reply: Vec<u8>) -> Result<()> {
     match self.socket.write(&reply).await {
       Ok(_n_written) => Ok(()),
       Err(err) => Err(Box::new(err))
     }
   }
 
-  async fn connection_reply(&mut self, hs: SocksHandshake, reply_status: ReplyField) -> Result<(), Box<dyn std::error::Error>> {
+  async fn connection_reply(&mut self, hs: SocksHandshake, reply_status: ReplyField) -> Result<()> {
     let reply = SocksReply::new(hs.version, reply_status, hs.atyp, hs.addr, hs.port);
     debug!("Reply for client after target connection verification: {:?}", &reply.to_reply());
     self.socket.write(&reply.to_reply()).await?;
     Ok(())
   }
 
-  async fn connection_reply_with_error(&mut self, err: std::io::Error, hs: SocksHandshake) -> Result<(), Box<dyn std::error::Error>> {
+  async fn connection_reply_with_error(&mut self, err: std::io::Error, hs: SocksHandshake) -> Result<()> {
     match err.kind() {
       ErrorKind::ConnectionRefused => {
         self.connection_reply(hs, ReplyField::ConnectionRefused).await?;
@@ -138,7 +139,7 @@ impl ConnHandler {
     }
   }
 
-  async fn verify_target_conn(&mut self, hs: SocksHandshake) -> Result<(), Box<dyn std::error::Error>> {
+  async fn verify_target_conn(&mut self, hs: SocksHandshake) -> Result<()> {
     let addr = hs.to_addr();
     debug!("Connecting to a target host at {:?}", addr);
 

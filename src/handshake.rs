@@ -56,14 +56,6 @@ impl SocksHandshake {
     req.append(&mut self.port_to_bytes());
     req
   }
-
-  // pub fn addr_to_bytes(&self) -> Vec<u8> {
-  //   self.addr.octets().to_vec()
-  // }
-
-  // pub fn port_to_bytes(&self) -> Vec<u8> {
-  //   self.port.to_be_bytes().to_vec()
-  // }
 }
 
 impl WithIpv4Addr for SocksHandshake {
@@ -87,27 +79,17 @@ pub enum HandshakeState {
 #[derive(Clone)]
 pub struct HandshakeStateBuilder {
   state: HandshakeState,
-  version: Option<SocksVersion>,
-  methods: Vec<SocksMethod>,
-  handshake: Option<SocksHandshake>,
 }
 
 impl HandshakeStateBuilder {
   pub fn new() -> Self {
     Self {
-      state: HandshakeState::Init,
-      version: None,
-      methods: vec![],
-      handshake: None,
+      state: HandshakeState::Init
     }
   }
 
   pub fn state(&self) -> HandshakeState {
     self.state.clone()
-  }
-
-  pub fn handshake(&self) -> &Option<SocksHandshake> {
-    &self.handshake
   }
 
   pub fn advance(&mut self, buf: &[u8]) -> Result<Vec<u8>, HandshakeError> {
@@ -117,16 +99,16 @@ impl HandshakeStateBuilder {
 
     match self.state {
       HandshakeState::Init => self.advance_from_init(buf),
-      HandshakeState::Wait(_, _) => self.advance_from_wait(buf),
+      HandshakeState::Wait(current_version, _) => self.advance_from_wait(buf, current_version),
       HandshakeState::Finished(_) => Ok(vec![]),
     }
   }
 
-  fn advance_from_wait(&mut self, buf: &[u8]) -> Result<Vec<u8>, HandshakeError> {
+  fn advance_from_wait(&mut self, buf: &[u8], current_version: SocksVersion) -> Result<Vec<u8>, HandshakeError> {
     let mut incoming = Cursor::new(buf);
     let version: SocksVersion = incoming.get_u8().try_into()?;
 
-    if self.version.map_or_else(|| true, |ver| ver != version) {
+    if current_version != version {
       return Err(HandshakeError::UnsupportedVersion)
     }
 
@@ -156,7 +138,6 @@ impl HandshakeStateBuilder {
     }
 
     let port = incoming.get_u16();
-    self.handshake = Some(SocksHandshake{ version, cmd, addr, port, atyp });
     self.state = HandshakeState::Finished(SocksHandshake{ version, cmd, addr, port, atyp });
 
     Ok(vec![])
@@ -164,8 +145,7 @@ impl HandshakeStateBuilder {
 
   fn advance_from_init(&mut self, buf: &[u8]) -> Result<Vec<u8>, HandshakeError> {
     let mut incoming = Cursor::new(buf);
-    let version = incoming.get_u8().try_into()?;
-    self.version = Some(version);
+    let version: SocksVersion = incoming.get_u8().try_into()?;
 
     if !incoming.has_remaining() {
       return Err(HandshakeError::Incomplete);
@@ -173,25 +153,27 @@ impl HandshakeStateBuilder {
 
     let n_methods = incoming.get_u8();
 
+    let mut methods = vec![];
+
     for _ in 0..n_methods {
       if !incoming.has_remaining() {
         return Err(HandshakeError::Incomplete);
       }
 
       let method: SocksMethod = incoming.get_u8().into();
-      self.methods.push(method);
+      methods.push(method);
     }
 
-    // make sure we read everything from buffer, drain?
-    // take note of selected method?
-    let reply = vec![version.into(), self.select_method().into()];
-    self.state = HandshakeState::Wait(version, self.methods.clone());
+    // should we check we read everything from buffeer?
+    // add selected method to state?
+    let reply = vec![version.into(), self.select_method(&methods).into()];
+    self.state = HandshakeState::Wait(version, methods);
 
     Ok(reply)
   }
 
-  fn select_method(&self) -> SocksMethod {
-    if self.methods.contains(&SocksMethod::NoAuth) {
+  fn select_method(&self, methods: &Vec<SocksMethod>) -> SocksMethod {
+    if methods.contains(&SocksMethod::NoAuth) {
       return SocksMethod::NoAuth
     }
     return SocksMethod::NoAcceptableMethod
