@@ -24,7 +24,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
   let _method: SocksMethod = buf[1].try_into()?;
 
   let hs_req = SocksHandshake{
-    version: version,
+    version,
     cmd: SocksCmd::Connect,
     addr: Ipv4Addr::from_str(&host).expect("should be a valid IPv4 addr"),
     port: target_port,

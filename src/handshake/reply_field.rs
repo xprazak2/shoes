@@ -1,6 +1,6 @@
 use super::error::HandshakeError;
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ReplyField {
   Succeeded,
   SocksServerFailure,

@@ -48,7 +48,7 @@ struct ConnHandler {
 
 impl ConnHandler {
   pub fn new(socket: TcpStream) -> Self {
-    Self { socket: socket, conn_state: ConnState::Handshake }
+    Self { socket, conn_state: ConnState::Handshake }
   }
 
   fn clear_buffer(&self, buf: &mut [u8; 1024]) {
@@ -129,12 +129,12 @@ impl ConnHandler {
     match err.kind() {
       ErrorKind::ConnectionRefused => {
         self.connection_reply(hs, ReplyField::ConnectionRefused).await?;
-        return Err(Box::new(err))
+        Err(Box::new(err))
       }
       _ => {
         self.connection_reply(hs, ReplyField::SocksServerFailure).await?;
         debug!("Err kind: {:?}", err);
-        return Err(Box::new(err))
+        Err(Box::new(err))
       },
     }
   }

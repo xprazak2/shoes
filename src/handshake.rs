@@ -43,7 +43,7 @@ pub struct SocksHandshake {
 
 impl SocksHandshake {
   pub fn to_addr(&self) -> String {
-    format!("{}:{}", self.addr.to_string(), self.port)
+    format!("{}:{}", self.addr, self.port)
   }
 
   pub fn to_request(&self) -> Vec<u8> {
@@ -176,6 +176,6 @@ impl HandshakeStateBuilder {
     if methods.contains(&SocksMethod::NoAuth) {
       return SocksMethod::NoAuth
     }
-    return SocksMethod::NoAcceptableMethod
+    SocksMethod::NoAcceptableMethod
   }
 }

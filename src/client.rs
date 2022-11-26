@@ -18,7 +18,7 @@ impl ClientConnectMsg {
     req.push(self.version.into());
     req.push(self.n_methods);
     for method in self.methods.iter() {
-      req.push(method.clone().into());
+      req.push((*method).into());
     }
     req
   }
