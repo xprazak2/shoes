@@ -25,5 +25,4 @@ pub enum HandshakeError {
 pub enum SocksReplyParseError {
   #[error("incomplete input")]
   Incomplete,
-
 }

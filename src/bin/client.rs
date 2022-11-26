@@ -33,16 +33,18 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
   socket.write(&hs_req.to_request()).await?;
   socket.read(&mut buf).await?;
-  println!("reply: {:?}", buf);
   let socks_reply = SocksReply::parse(&buf)?;
 
   println!("socks reply: {:?}", socks_reply);
   if socks_reply.rep != ReplyField::Succeeded {
-    panic!("Handshake failed, server replied: {:?}", socks_reply.rep)
+    println!("Handshake failed, exiting. Server replied: {:?}", socks_reply.rep);
+    return Ok(())
   }
 
   let mut input = String::new();
+  println!("Input the data which will be sent to server:");
 
+  // this example client works in 'oneshot' mode - it disconnects after sending one message
   match std::io::stdin().read_line(&mut input) {
     Ok(_) => {
       println!("Sending data to server: {:?}", input);
